@@ -81,6 +81,9 @@ class GlobalSTTManager:
         self.wake_words_sensitivity = 0.6
         self.wakeword_backend = "pvporcupine"  # Default backend
         self.custom_wakeword_model_path = None  # Path to custom trained model
+        # Wake word behavior
+        self.wake_word_timeout = 12.0  # seconds to start talking after wake word
+        self.conversation_window = 4.0  # seconds after an utterance to keep listening without wake word
         
         # Advanced VAD settings (from RealtimeSTT_server)
         self.silero_sensitivity = 0.05
@@ -189,6 +192,9 @@ class GlobalSTTManager:
                     self.end_of_sentence_detection_pause = float(settings.get('end_of_sentence_detection_pause', self.end_of_sentence_detection_pause))
                     self.unknown_sentence_detection_pause = float(settings.get('unknown_sentence_detection_pause', self.unknown_sentence_detection_pause))
                     self.mid_sentence_detection_pause = float(settings.get('mid_sentence_detection_pause', self.mid_sentence_detection_pause))
+                    # Wake word behavior
+                    self.wake_word_timeout = float(settings.get('wake_word_timeout', self.wake_word_timeout))
+                    self.conversation_window = float(settings.get('conversation_window', self.conversation_window))
             except Exception as e:
                 print(f"Error loading settings: {e}")
     
@@ -226,6 +232,9 @@ class GlobalSTTManager:
             'unknown_sentence_detection_pause': self.unknown_sentence_detection_pause,
             'mid_sentence_detection_pause': self.mid_sentence_detection_pause
         }
+        # Persist wake word behavior tuning
+        settings['wake_word_timeout'] = self.wake_word_timeout
+        settings['conversation_window'] = self.conversation_window
         try:
             with open(self.settings_file, 'w') as f:
                 json.dump(settings, f, indent=2)
@@ -411,6 +420,15 @@ class GlobalSTTManager:
                         recorder_config['wakeword_backend'] = 'oww'
                         recorder_config['wake_words'] = 'hey jarvis'  # Required workaround
                         recorder_config['openwakeword_model_paths'] = self.custom_wakeword_model_path
+                        # Pick inference framework based on file extension
+                        try:
+                            ext = os.path.splitext(str(self.custom_wakeword_model_path).lower())[1]
+                            if ext == '.onnx':
+                                recorder_config['openwakeword_inference_framework'] = 'onnx'
+                            elif ext == '.tflite':
+                                recorder_config['openwakeword_inference_framework'] = 'tflite'
+                        except Exception:
+                            pass
                         recorder_config['wake_words_sensitivity'] = self.wake_words_sensitivity
                         if self.debug_mode:
                             print(f"[DEBUG] Custom wake word model (OWW): {self.custom_wakeword_model_path}")
@@ -425,6 +443,12 @@ class GlobalSTTManager:
                     
                     recorder_config['on_wakeword_detected'] = self.on_wakeword_detected
                     recorder_config['on_wakeword_timeout'] = self.on_wakeword_timeout
+                    recorder_config['on_recording_stop'] = self.on_recording_stop
+                    # Behavior tuning
+                    recorder_config['wake_word_timeout'] = float(self.wake_word_timeout)
+                    recorder_config['wake_word_activation_delay'] = float(self.conversation_window)
+                # Pass through debug flag to recorder for deeper logs if enabled
+                recorder_config['debug_mode'] = bool(self.debug_mode)
                 
                 self.recorder = AudioToTextRecorder(**recorder_config)
                 if self.debug_mode:
@@ -533,6 +557,18 @@ class GlobalSTTManager:
         if self.debug_mode:
             print("[DEBUG] Wake word timeout - back to listening for wake word")
         print("⏰ No speech detected after wake word - back to listening...")
+
+    def on_recording_stop(self):
+        """After an utterance, keep listening briefly without requiring the wake word."""
+        try:
+            if self.wake_words_enabled and float(self.conversation_window) > 0 and self.recorder:
+                if self.debug_mode:
+                    print(f"[DEBUG] Conversation window active for {self.conversation_window:.2f}s (no wake word needed)")
+                # Put recorder into listening state; activation delay window applies internally
+                self.recorder.listen()
+        except Exception as e:
+            if self.debug_mode:
+                print(f"[DEBUG] on_recording_stop error: {e}")
     
     def preprocess_realtime_text(self, text):
         """Preprocess real-time text for typing.
@@ -828,7 +864,8 @@ class GlobalSTTManager:
         # Create a fresh Tk window for settings to ensure it opens reliably
         settings_window = tk.Tk()
         settings_window.title("Global STT Settings")
-        settings_window.geometry("500x1000")
+        # Make the window wider and shorter to reduce vertical overflow
+        settings_window.geometry("1000x720")
         settings_window.resizable(False, False)
         settings_window.configure(bg='#f0f0f0')
 
@@ -837,29 +874,36 @@ class GlobalSTTManager:
         settings_window.attributes('-topmost', True)
         settings_window.after(200, lambda: settings_window.attributes('-topmost', False))
         settings_window.focus_force()
-        
-        # Model selection
-        tk.Label(settings_window, text="Model:", font=("Arial", 10, "bold")).pack(pady=5)
+        # Layout: two columns side-by-side to reduce height
+        content_frame = tk.Frame(settings_window, bg='#f0f0f0')
+        content_frame.pack(fill='both', expand=True, padx=8, pady=8)
+        left_col = tk.Frame(content_frame, bg='#f0f0f0')
+        right_col = tk.Frame(content_frame, bg='#f0f0f0')
+        left_col.pack(side=tk.LEFT, fill='both', expand=True, padx=(0,6))
+        right_col.pack(side=tk.LEFT, fill='both', expand=True, padx=(6,0))
+
+        # Model selection (left column)
+        tk.Label(left_col, text="Model:", font=("Arial", 10, "bold")).pack(pady=5)
         model_var = tk.StringVar(value=self.current_model)
-        model_combo = ttk.Combobox(settings_window, textvariable=model_var, values=[
+        model_combo = ttk.Combobox(left_col, textvariable=model_var, values=[
             "tiny.en", "base.en", "small.en", "medium.en", "large-v1", "large-v2", "large-v3", "large-v3-turbo"
         ], state="readonly")
         model_combo.pack(pady=5)
         
-        # Text processing options
-        tk.Label(settings_window, text="Text Processing:", font=("Arial", 10, "bold")).pack(pady=(15,5))
+        # Text processing options (left column)
+        tk.Label(left_col, text="Text Processing:", font=("Arial", 10, "bold")).pack(pady=(15,5))
         
         auto_punct_var = tk.BooleanVar(value=self.auto_punctuation)
-        tk.Checkbutton(settings_window, text="Auto Punctuation", variable=auto_punct_var).pack()
+        tk.Checkbutton(left_col, text="Auto Punctuation", variable=auto_punct_var).pack()
         
         auto_cap_var = tk.BooleanVar(value=self.auto_capitalize)
-        tk.Checkbutton(settings_window, text="Auto Capitalize", variable=auto_cap_var).pack()
+        tk.Checkbutton(left_col, text="Auto Capitalize", variable=auto_cap_var).pack()
         
         realtime_var = tk.BooleanVar(value=self.realtime_typing)
-        tk.Checkbutton(settings_window, text="Real-time Typing (type as you speak)", variable=realtime_var).pack()
+        tk.Checkbutton(left_col, text="Real-time Typing (type as you speak)", variable=realtime_var).pack()
 
-        # Realtime tuning
-        tk.Label(settings_window, text="Realtime Tuning:", font=("Arial", 10, "bold")).pack(pady=(15,5))
+        # Realtime tuning (left column)
+        tk.Label(left_col, text="Realtime Tuning:", font=("Arial", 10, "bold")).pack(pady=(15,5))
 
         # Helper to add labeled horizontal scales
         def add_scale(parent, label, from_, to, resolution, init_val, fmt="{:.2f}", is_int=False):
@@ -878,46 +922,46 @@ class GlobalSTTManager:
             scale.pack(fill='x')
             return var
 
-        rp_pause_var = add_scale(settings_window, "Realtime Processing Pause (s)", 0.005, 0.1, 0.005, self.realtime_processing_pause)
-        pssd_var = add_scale(settings_window, "Post-speech Silence (s)", 0.2, 2.0, 0.05, self.post_speech_silence_duration)
-        min_len_var = add_scale(settings_window, "Min Utterance Length (s)", 0.1, 1.0, 0.05, self.min_length_of_recording)
-        min_gap_var = add_scale(settings_window, "Min Gap Between Recordings (s)", 0.0, 0.5, 0.01, self.min_gap_between_recordings)
-        suppress_var = add_scale(settings_window, "Finalize Suppression Window (s)", 0.0, 1.0, 0.05, self.finalize_suppress_window)
-        max_bksp_var = add_scale(settings_window, "Max Backspaces Per Update", 32, 1024, 32, self.max_backspaces_per_update, fmt="{}", is_int=True)
+        rp_pause_var = add_scale(left_col, "Realtime Processing Pause (s)", 0.005, 0.1, 0.005, self.realtime_processing_pause)
+        pssd_var = add_scale(left_col, "Post-speech Silence (s)", 0.2, 2.0, 0.05, self.post_speech_silence_duration)
+        min_len_var = add_scale(left_col, "Min Utterance Length (s)", 0.1, 1.0, 0.05, self.min_length_of_recording)
+        min_gap_var = add_scale(left_col, "Min Gap Between Recordings (s)", 0.0, 0.5, 0.01, self.min_gap_between_recordings)
+        suppress_var = add_scale(left_col, "Finalize Suppression Window (s)", 0.0, 1.0, 0.05, self.finalize_suppress_window)
+        max_bksp_var = add_scale(left_col, "Max Backspaces Per Update", 32, 1024, 32, self.max_backspaces_per_update, fmt="{}", is_int=True)
         
-        # Advanced VAD Settings
-        tk.Label(settings_window, text="Advanced VAD Settings:", font=("Arial", 10, "bold")).pack(pady=(15,5))
+        # Advanced VAD Settings (right column)
+        tk.Label(right_col, text="Advanced VAD Settings:", font=("Arial", 10, "bold")).pack(pady=(15,5))
         
-        silero_sens_var = add_scale(settings_window, "Silero VAD Sensitivity", 0.01, 1.0, 0.01, self.silero_sensitivity)
-        webrtc_sens_var = add_scale(settings_window, "WebRTC VAD Sensitivity", 0, 3, 1, self.webrtc_sensitivity, fmt="{}", is_int=True)
-        early_trans_var = add_scale(settings_window, "Early Transcription on Silence (s)", 0.0, 1.0, 0.05, self.early_transcription_on_silence)
+        silero_sens_var = add_scale(right_col, "Silero VAD Sensitivity", 0.01, 1.0, 0.01, self.silero_sensitivity)
+        webrtc_sens_var = add_scale(right_col, "WebRTC VAD Sensitivity", 0, 3, 1, self.webrtc_sensitivity, fmt="{}", is_int=True)
+        early_trans_var = add_scale(right_col, "Early Transcription on Silence (s)", 0.0, 1.0, 0.05, self.early_transcription_on_silence)
         
         silero_onnx_var = tk.BooleanVar(value=self.silero_use_onnx)
-        tk.Checkbutton(settings_window, text="Use Silero ONNX (faster)", variable=silero_onnx_var).pack()
+        tk.Checkbutton(right_col, text="Use Silero ONNX (faster)", variable=silero_onnx_var).pack()
         
-        # Enhanced Model Parameters
-        tk.Label(settings_window, text="Model Parameters:", font=("Arial", 10, "bold")).pack(pady=(15,5))
+        # Enhanced Model Parameters (right column)
+        tk.Label(right_col, text="Model Parameters:", font=("Arial", 10, "bold")).pack(pady=(15,5))
         
-        beam_size_var = add_scale(settings_window, "Main Model Beam Size", 1, 10, 1, self.beam_size, fmt="{}", is_int=True)
-        beam_realtime_var = add_scale(settings_window, "Realtime Model Beam Size", 1, 5, 1, self.beam_size_realtime, fmt="{}", is_int=True)
-        batch_size_var = add_scale(settings_window, "Batch Size", 1, 32, 1, self.batch_size, fmt="{}", is_int=True)
+        beam_size_var = add_scale(right_col, "Main Model Beam Size", 1, 10, 1, self.beam_size, fmt="{}", is_int=True)
+        beam_realtime_var = add_scale(right_col, "Realtime Model Beam Size", 1, 5, 1, self.beam_size_realtime, fmt="{}", is_int=True)
+        batch_size_var = add_scale(right_col, "Batch Size", 1, 32, 1, self.batch_size, fmt="{}", is_int=True)
         
-        # Advanced Pause Detection
-        tk.Label(settings_window, text="Intelligent Pause Detection:", font=("Arial", 10, "bold")).pack(pady=(15,5))
+        # Advanced Pause Detection (right column)
+        tk.Label(right_col, text="Intelligent Pause Detection:", font=("Arial", 10, "bold")).pack(pady=(15,5))
         
-        end_pause_var = add_scale(settings_window, "End of Sentence Pause (s)", 0.1, 2.0, 0.05, self.end_of_sentence_detection_pause)
-        unknown_pause_var = add_scale(settings_window, "Unknown Sentence Pause (s)", 0.1, 3.0, 0.1, self.unknown_sentence_detection_pause)
-        mid_pause_var = add_scale(settings_window, "Mid Sentence Pause (s)", 0.5, 5.0, 0.1, self.mid_sentence_detection_pause)
+        end_pause_var = add_scale(right_col, "End of Sentence Pause (s)", 0.1, 2.0, 0.05, self.end_of_sentence_detection_pause)
+        unknown_pause_var = add_scale(right_col, "Unknown Sentence Pause (s)", 0.1, 3.0, 0.1, self.unknown_sentence_detection_pause)
+        mid_pause_var = add_scale(right_col, "Mid Sentence Pause (s)", 0.5, 5.0, 0.1, self.mid_sentence_detection_pause)
         
-        # Wake word settings
-        tk.Label(settings_window, text="Wake Words:", font=("Arial", 10, "bold")).pack(pady=(15,5))
+        # Wake word settings (right column)
+        tk.Label(right_col, text="Wake Words:", font=("Arial", 10, "bold")).pack(pady=(15,5))
         
         wake_enabled_var = tk.BooleanVar(value=self.wake_words_enabled)
-        tk.Checkbutton(settings_window, text="Enable Wake Words", variable=wake_enabled_var).pack()
+        tk.Checkbutton(right_col, text="Enable Wake Words", variable=wake_enabled_var).pack()
         
-        tk.Label(settings_window, text="Wake Word:", font=("Arial", 9)).pack(pady=(5,0))
+        tk.Label(right_col, text="Wake Word:", font=("Arial", 9)).pack(pady=(5,0))
         wake_word_var = tk.StringVar(value=self.wake_words if not self.custom_wakeword_model_path else "custom")
-        wake_word_combo = ttk.Combobox(settings_window, textvariable=wake_word_var, values=[
+        wake_word_combo = ttk.Combobox(right_col, textvariable=wake_word_var, values=[
             "custom", "jarvis", "computer", "hey google", "hey siri", "ok google", "alexa", 
             "porcupine", "bumblebee", "terminator", "picovoice", "americano", 
             "blueberry", "grapefruits", "grasshopper"
@@ -925,14 +969,14 @@ class GlobalSTTManager:
         wake_word_combo.pack(pady=2)
         
         # Sensitivity
-        tk.Label(settings_window, text="Sensitivity (0.0-1.0):", font=("Arial", 9)).pack(pady=(5,0))
+        tk.Label(right_col, text="Sensitivity (0.0-1.0):", font=("Arial", 9)).pack(pady=(5,0))
         sensitivity_var = tk.StringVar(value=str(self.wake_words_sensitivity if self.wake_words_sensitivity is not None else 0.6))
-        sensitivity_entry = tk.Entry(settings_window, textvariable=sensitivity_var, width=10)
+        sensitivity_entry = tk.Entry(right_col, textvariable=sensitivity_var, width=10)
         sensitivity_entry.pack(pady=2)
 
-        tk.Label(settings_window, text="Custom Model Path:", font=("Arial", 9)).pack(pady=(5,0))
+        tk.Label(right_col, text="Custom Model Path:", font=("Arial", 9)).pack(pady=(5,0))
         custom_model_var = tk.StringVar(value=self.custom_wakeword_model_path or "")
-        custom_model_entry = tk.Entry(settings_window, textvariable=custom_model_var, width=40)
+        custom_model_entry = tk.Entry(right_col, textvariable=custom_model_var, width=40)
         custom_model_entry.pack(pady=2)
         
         def browse_model():
@@ -952,7 +996,7 @@ class GlobalSTTManager:
             except Exception as e:
                 print(f"Browse error: {e}")
         
-        browse_btn = tk.Button(settings_window, text="Browse...", command=browse_model, font=("Arial", 8))
+        browse_btn = tk.Button(right_col, text="Browse...", command=browse_model, font=("Arial", 8))
         browse_btn.pack(pady=2)
         
         # Helper to enable/disable wake-related controls
@@ -999,18 +1043,31 @@ class GlobalSTTManager:
 
         # Set initial state for wake controls
         update_wake_controls()
+
+        # Wake word behavior tuning
+        tk.Label(right_col, text="Wake Word Behavior:", font=("Arial", 10, "bold")).pack(pady=(12,5))
+        # Timeout between detection and first speech
+        tk.Label(right_col, text="Wake Word Timeout (s)").pack(anchor='w', padx=8)
+        wake_timeout_var = tk.DoubleVar(value=float(self.wake_word_timeout))
+        tk.Scale(right_col, from_=2.0, to=60.0, resolution=0.5, orient=tk.HORIZONTAL,
+                 showvalue=True, length=360, variable=wake_timeout_var).pack(padx=6, pady=2, fill='x')
+        # Conversation window after an utterance ends
+        tk.Label(right_col, text="Conversation Window After Speech (s)").pack(anchor='w', padx=8)
+        conv_window_var = tk.DoubleVar(value=float(self.conversation_window))
+        tk.Scale(right_col, from_=0.0, to=15.0, resolution=0.5, orient=tk.HORIZONTAL,
+                 showvalue=True, length=360, variable=conv_window_var).pack(padx=6, pady=2, fill='x')
         
-        # Insert mode
-        tk.Label(settings_window, text="Insert Mode:", font=("Arial", 10, "bold")).pack(pady=(15,5))
+        # Insert mode (left column)
+        tk.Label(left_col, text="Insert Mode:", font=("Arial", 10, "bold")).pack(pady=(15,5))
         insert_var = tk.StringVar(value=self.insert_mode)
         for mode, desc in [("type", "Type directly"), ("clipboard", "Use clipboard"), ("replace", "Replace all text")]:
-            tk.Radiobutton(settings_window, text=desc, variable=insert_var, value=mode).pack()
+            tk.Radiobutton(left_col, text=desc, variable=insert_var, value=mode).pack()
         
-        # Hotkeys info
-        tk.Label(settings_window, text="Hotkeys:", font=("Arial", 10, "bold")).pack(pady=(15,5))
-        tk.Label(settings_window, text=f"Start: {self.start_hotkey.upper()}", font=("Arial", 8)).pack()
-        tk.Label(settings_window, text=f"Stop: {self.stop_hotkey.upper()}", font=("Arial", 8)).pack()
-        tk.Label(settings_window, text=f"Toggle: {self.toggle_hotkey.upper()}", font=("Arial", 8)).pack()
+        # Hotkeys info (left column)
+        tk.Label(left_col, text="Hotkeys:", font=("Arial", 10, "bold")).pack(pady=(15,5))
+        tk.Label(left_col, text=f"Start: {self.start_hotkey.upper()}", font=("Arial", 8)).pack()
+        tk.Label(left_col, text=f"Stop: {self.stop_hotkey.upper()}", font=("Arial", 8)).pack()
+        tk.Label(left_col, text=f"Toggle: {self.toggle_hotkey.upper()}", font=("Arial", 8)).pack()
         
         def save_and_close():
             try:
@@ -1041,6 +1098,15 @@ class GlobalSTTManager:
                         self.wake_words_sensitivity = 0.6
                 except ValueError:
                     self.wake_words_sensitivity = 0.6
+                # Wake word behavior values
+                try:
+                    self.wake_word_timeout = float(wake_timeout_var.get())
+                except Exception:
+                    self.wake_word_timeout = 12.0
+                try:
+                    self.conversation_window = float(conv_window_var.get())
+                except Exception:
+                    self.conversation_window = 4.0
                 
                 # Realtime tuning values
                 try:

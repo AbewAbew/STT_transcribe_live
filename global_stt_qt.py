@@ -33,10 +33,21 @@ class SettingsDialog(QDialog):
     def __init__(self, manager: 'GlobalSTTManager', refresh_menu_cb, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Global STT Settings")
+        # Wider dialog to accommodate two-column layout
+        self.resize(1000, 720)
         self.manager = manager
         self.refresh_menu_cb = refresh_menu_cb
 
         layout = QVBoxLayout(self)
+        # Two-column layout to reduce vertical height
+        columns = QHBoxLayout()
+        layout.addLayout(columns)
+        left = QVBoxLayout()
+        right = QVBoxLayout()
+        columns.addLayout(left)
+        columns.addLayout(right)
+        columns.setStretch(0, 1)
+        columns.setStretch(1, 1)
 
         # Model
         form = QFormLayout()
@@ -46,24 +57,24 @@ class SettingsDialog(QDialog):
         self.model_combo.setCurrentIndex(max(idx, 0))
         form.addRow(QLabel("Model:"), self.model_combo)
 
-        # Text processing
-        layout.addLayout(form)
-        layout.addWidget(QLabel("Text Processing:"))
+        # Text processing (left column)
+        left.addLayout(form)
+        left.addWidget(QLabel("Text Processing:"))
         self.auto_punct_cb = QCheckBox("Auto Punctuation")
         self.auto_punct_cb.setChecked(bool(getattr(self.manager, 'auto_punctuation', True)))
         self.auto_cap_cb = QCheckBox("Auto Capitalize")
         self.auto_cap_cb.setChecked(bool(getattr(self.manager, 'auto_capitalize', True)))
         self.realtime_cb = QCheckBox("Real-time Typing (type as you speak)")
         self.realtime_cb.setChecked(bool(getattr(self.manager, 'realtime_typing', False)))
-        layout.addWidget(self.auto_punct_cb)
-        layout.addWidget(self.auto_cap_cb)
-        layout.addWidget(self.realtime_cb)
+        left.addWidget(self.auto_punct_cb)
+        left.addWidget(self.auto_cap_cb)
+        left.addWidget(self.realtime_cb)
 
-        # Wake words
-        layout.addWidget(QLabel("Wake Words:"))
+        # Wake words (right column)
+        right.addWidget(QLabel("Wake Words:"))
         self.wake_enable_cb = QCheckBox("Enable Wake Words")
         self.wake_enable_cb.setChecked(bool(getattr(self.manager, 'wake_words_enabled', False)))
-        layout.addWidget(self.wake_enable_cb)
+        right.addWidget(self.wake_enable_cb)
 
         form2 = QFormLayout()
         self.wake_word_combo = QComboBox()
@@ -92,7 +103,7 @@ class SettingsDialog(QDialog):
         container = QWidget()
         container.setLayout(h)
         form2.addRow(QLabel("Custom Model Path:"), container)
-        layout.addLayout(form2)
+        right.addLayout(form2)
 
         def browse_model():
             path, _ = QFileDialog.getOpenFileName(self, "Select Custom Wake Word Model", os.getcwd(),
@@ -102,15 +113,33 @@ class SettingsDialog(QDialog):
                 self.wake_word_combo.setCurrentText("custom")
         browse_btn.clicked.connect(browse_model)
 
-        # Insert mode
-        layout.addWidget(QLabel("Insert Mode:"))
+        # Wake word behavior (right column)
+        right.addWidget(QLabel("Wake Word Behavior:"))
+        form3 = QFormLayout()
+        self.wake_timeout_spin = QDoubleSpinBox()
+        self.wake_timeout_spin.setRange(2.0, 60.0)
+        self.wake_timeout_spin.setSingleStep(0.5)
+        self.wake_timeout_spin.setDecimals(1)
+        self.wake_timeout_spin.setValue(float(getattr(self.manager, 'wake_word_timeout', 12.0)))
+        form3.addRow(QLabel("Wake Word Timeout (s)"), self.wake_timeout_spin)
+
+        self.conv_window_spin = QDoubleSpinBox()
+        self.conv_window_spin.setRange(0.0, 15.0)
+        self.conv_window_spin.setSingleStep(0.5)
+        self.conv_window_spin.setDecimals(1)
+        self.conv_window_spin.setValue(float(getattr(self.manager, 'conversation_window', 4.0)))
+        form3.addRow(QLabel("Conversation Window After Speech (s)"), self.conv_window_spin)
+        right.addLayout(form3)
+
+        # Insert mode (left column)
+        left.addWidget(QLabel("Insert Mode:"))
         self.rb_type = QRadioButton("Type directly")
         self.rb_clip = QRadioButton("Use clipboard")
         self.rb_replace = QRadioButton("Replace all text")
         self.insert_group = QButtonGroup(self)
         for i, rb in enumerate([self.rb_type, self.rb_clip, self.rb_replace]):
             self.insert_group.addButton(rb, i)
-            layout.addWidget(rb)
+            left.addWidget(rb)
         current_mode = getattr(self.manager, 'insert_mode', 'type')
         {"type": self.rb_type, "clipboard": self.rb_clip, "replace": self.rb_replace}.get(current_mode, self.rb_type).setChecked(True)
 
@@ -125,8 +154,8 @@ class SettingsDialog(QDialog):
         self.wake_word_combo.currentTextChanged.connect(update_wake_controls)
         update_wake_controls()
 
-        # Advanced VAD Settings
-        layout.addWidget(QLabel("Advanced VAD Settings:"))
+        # Advanced VAD Settings (right column)
+        right.addWidget(QLabel("Advanced VAD Settings:"))
         vad_form = QFormLayout()
         
         self.silero_sens_spin = QDoubleSpinBox()
@@ -152,10 +181,10 @@ class SettingsDialog(QDialog):
         self.silero_onnx_cb.setChecked(bool(getattr(self.manager, 'silero_use_onnx', False)))
         vad_form.addRow(self.silero_onnx_cb)
         
-        layout.addLayout(vad_form)
+        right.addLayout(vad_form)
         
-        # Enhanced Model Parameters
-        layout.addWidget(QLabel("Model Parameters:"))
+        # Enhanced Model Parameters (right column)
+        right.addWidget(QLabel("Model Parameters:"))
         model_form = QFormLayout()
         
         self.beam_size_spin = QSpinBox()
@@ -173,10 +202,10 @@ class SettingsDialog(QDialog):
         self.batch_size_spin.setValue(int(getattr(self.manager, 'batch_size', 16)))
         model_form.addRow(QLabel("Batch Size"), self.batch_size_spin)
         
-        layout.addLayout(model_form)
+        right.addLayout(model_form)
         
-        # Advanced Pause Detection
-        layout.addWidget(QLabel("Intelligent Pause Detection:"))
+        # Advanced Pause Detection (right column)
+        right.addWidget(QLabel("Intelligent Pause Detection:"))
         pause_form = QFormLayout()
         
         self.end_pause_spin = QDoubleSpinBox()
@@ -200,10 +229,10 @@ class SettingsDialog(QDialog):
         self.mid_pause_spin.setValue(float(getattr(self.manager, 'mid_sentence_detection_pause', 2.0)))
         pause_form.addRow(QLabel("Mid Sentence Pause (s)"), self.mid_pause_spin)
         
-        layout.addLayout(pause_form)
+        right.addLayout(pause_form)
 
-        # Realtime tuning
-        layout.addWidget(QLabel("Realtime Tuning:"))
+        # Realtime tuning (left column)
+        left.addWidget(QLabel("Realtime Tuning:"))
         tune_form = QFormLayout()
 
         self.rp_pause_spin = QDoubleSpinBox()
@@ -247,7 +276,7 @@ class SettingsDialog(QDialog):
         self.max_backspaces_spin.setValue(int(getattr(self.manager, 'max_backspaces_per_update', 512)))
         tune_form.addRow(QLabel("Max Backspaces Per Update"), self.max_backspaces_spin)
 
-        layout.addLayout(tune_form)
+        left.addLayout(tune_form)
 
         # Buttons
         btns = QHBoxLayout()
@@ -284,6 +313,9 @@ class SettingsDialog(QDialog):
                 self.manager.wake_words = self.wake_word_combo.currentText()
                 self.manager.custom_wakeword_model_path = None
             self.manager.wake_words_sensitivity = float(self.sens_spin.value())
+            # Wake word behavior
+            self.manager.wake_word_timeout = float(self.wake_timeout_spin.value())
+            self.manager.conversation_window = float(self.conv_window_spin.value())
 
             # Realtime tuning values
             self.manager.realtime_processing_pause = float(self.rp_pause_spin.value())
@@ -320,7 +352,14 @@ class SettingsDialog(QDialog):
                         (old_rp_pause != float(self.manager.realtime_processing_pause)) or
                         (old_pssd != float(self.manager.post_speech_silence_duration)) or
                         (old_min_len != float(self.manager.min_length_of_recording)) or
-                        (old_min_gap != float(self.manager.min_gap_between_recordings))
+                        (old_min_gap != float(self.manager.min_gap_between_recordings)) or
+                        # Re-init on wakeword changes as backend/model need reload
+                        (bool(getattr(self.manager, 'wake_words_enabled', False)) != bool(self.wake_enable_cb.isChecked())) or
+                        (str(getattr(self.manager, 'wake_words', '')) != (self.wake_word_combo.currentText() if self.wake_word_combo.currentText() != 'custom' else 'custom')) or
+                        (str(getattr(self.manager, 'custom_wakeword_model_path', '') or '') != str(self.custom_model_edit.text().strip() or '')) or
+                        (float(getattr(self.manager, 'wake_words_sensitivity', 0.6) or 0.6) != float(self.sens_spin.value())) or
+                        (float(getattr(self.manager, 'wake_word_timeout', 12.0)) != float(self.wake_timeout_spin.value())) or
+                        (float(getattr(self.manager, 'conversation_window', 4.0)) != float(self.conv_window_spin.value()))
                     )
                     if need_recreate and self.manager.recorder:
                         self.manager.recorder.shutdown()
