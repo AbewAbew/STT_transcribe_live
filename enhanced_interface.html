@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎤 Advanced RealtimeSTT Pro</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff; min-height: 100vh;
+        }
+        .header {
+            text-align: center; padding: 20px 0;
+            background: rgba(0, 255, 0, 0.1); border-bottom: 2px solid #0F0;
+        }
+        .title { color: #0F0; text-shadow: 0 0 10px #0F0; font-size: 2.5em; margin-bottom: 10px; }
+        .subtitle { color: #ccc; font-size: 1.2em; }
+        .container { 
+            max-width: 1400px; margin: 0 auto; padding: 30px;
+            display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;
+        }
+        .panel {
+            background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(0, 255, 0, 0.3);
+            border-radius: 15px; padding: 20px; backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 255, 0, 0.1);
+        }
+        .panel h3 { color: #0F0; margin-bottom: 15px; font-size: 1.2em; display: flex; align-items: center; gap: 10px; }
+        .control-group { margin-bottom: 15px; }
+        .control-group label { display: block; margin-bottom: 5px; color: #ccc; font-weight: 500; font-size: 0.9em; }
+        select, button, input { 
+            width: 100%; padding: 10px; border-radius: 8px; border: 1px solid rgba(0, 255, 0, 0.3);
+            background: rgba(0, 0, 0, 0.3); color: #fff; font-size: 14px; transition: all 0.3s ease;
+        }
+        .btn-primary { background: linear-gradient(45deg, #003300, #006600); color: #0F0; border: 1px solid #0F0; cursor: pointer; font-weight: bold; }
+        .btn-primary:hover { background: linear-gradient(45deg, #006600, #009900); box-shadow: 0 0 20px rgba(0, 255, 0, 0.5); }
+        .btn-danger { background: linear-gradient(45deg, #5a0000, #8b0000); color: #ff4d4d; border: 1px solid #ff4d4d; cursor: pointer; font-weight: bold; }
+        .text-display-panel { grid-column: 1 / -1; margin-top: 20px; }
+        #text-display-container { 
+            background: rgba(0, 0, 0, 0.7); border: 2px solid #0F0; border-radius: 10px;
+            padding: 20px; min-height: 300px; max-height: 400px; overflow-y: auto;
+        }
+        #text-display { font-size: 16px; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+        .stat-item { background: rgba(0, 0, 0, 0.3); padding: 8px; border-radius: 8px; text-align: center; }
+        .stat-value { font-size: 1.2em; font-weight: bold; color: #0F0; }
+        .stat-label { font-size: 0.8em; color: #ccc; }
+        .checkbox-group { display: flex; flex-direction: column; gap: 8px; }
+        .checkbox-item { display: flex; align-items: center; gap: 8px; }
+        .checkbox-item input[type="checkbox"] { width: auto; margin: 0; }
+        .text-controls { display: flex; gap: 8px; margin-top: 10px; }
+        .text-controls button { flex: 1; padding: 6px 8px; font-size: 12px; }
+        .feature-toggle { 
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px; background: rgba(0, 0, 0, 0.2); border-radius: 5px; margin-bottom: 8px;
+        }
+        .toggle-switch { 
+            position: relative; width: 40px; height: 20px; background: #333;
+            border-radius: 20px; cursor: pointer; transition: 0.3s;
+        }
+        .toggle-switch.active { background: #0F0; }
+        .toggle-switch::before {
+            content: ''; position: absolute; width: 16px; height: 16px;
+            border-radius: 50%; background: white; top: 2px; left: 2px;
+            transition: 0.3s;
+        }
+        .toggle-switch.active::before { transform: translateX(20px); }
+        .voice-commands-list {
+            max-height: 200px; overflow-y: auto; font-size: 0.8em;
+            background: rgba(0, 0, 0, 0.2); padding: 10px; border-radius: 5px;
+        }
+        .command-item { margin-bottom: 5px; color: #ccc; }
+        .command-trigger { color: #0F0; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 class="title"><i class="fas fa-microphone-alt"></i> Advanced RealtimeSTT Pro</h1>
+        <p class="subtitle">Professional Speech-to-Text with AI Enhancement</p>
+    </div>
+    
+    <div class="container">
+        <!-- Recording Controls -->
+        <div class="panel">
+            <h3><i class="fas fa-play-circle"></i> Recording</h3>
+            <div class="control-group">
+                <label>AI Model:</label>
+                <select id="model-select">
+                    <option value="tiny.en">Tiny - Fastest</option>
+                    <option value="base.en">Base - Fast</option>
+                    <option value="small.en" selected>Small - Balanced</option>
+                    <option value="medium.en">Medium - Accurate</option>
+                    <option value="large-v1">Large v1 - High Accuracy</option>
+                    <option value="large-v2">Large v2 - Better</option>
+                    <option value="large-v3">Large v3 - Best</option>
+                    <option value="large-v3-turbo">Large v3 Turbo - Ultra Fast</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <button id="start-button" class="btn-primary"><i class="fas fa-play"></i> Start</button>
+            </div>
+            <div class="control-group">
+                <button id="stop-button" class="btn-danger" disabled><i class="fas fa-stop"></i> Stop</button>
+            </div>
+            <div class="control-group">
+                <button id="shutdown-button" class="btn-danger"><i class="fas fa-power-off"></i> Close Web Interface</button>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-value" id="word-count">0</div>
+                    <div class="stat-label">Words</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="wpm">0</div>
+                    <div class="stat-label">WPM</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Enhanced Features -->
+        <div class="panel">
+            <h3><i class="fas fa-magic"></i> AI Features</h3>
+            <div class="feature-toggle">
+                <span>Voice Commands</span>
+                <div class="toggle-switch active" id="voice-commands-toggle"></div>
+            </div>
+            <div class="feature-toggle">
+                <span>Smart Text Processing</span>
+                <div class="toggle-switch active" id="smart-text-toggle"></div>
+            </div>
+            <div class="feature-toggle">
+                <span>Audio Enhancement</span>
+                <div class="toggle-switch active" id="audio-enhancement-toggle"></div>
+            </div>
+            <div class="feature-toggle">
+                <span>Auto Punctuation</span>
+                <div class="toggle-switch active" id="auto-punctuation-toggle"></div>
+            </div>
+            <div class="feature-toggle">
+                <span>Real-time Typing</span>
+                <div class="toggle-switch" id="realtime-typing-toggle"></div>
+            </div>
+            <div class="control-group">
+                <button id="calibrate-noise" class="btn-primary"><i class="fas fa-volume-up"></i> Calibrate Noise</button>
+            </div>
+        </div>
+
+        <!-- Voice Commands Help -->
+        <div class="panel">
+            <h3><i class="fas fa-microphone"></i> Voice Commands</h3>
+            <div class="voice-commands-list">
+                <div class="command-item"><span class="command-trigger">"New line"</span> - Add line break</div>
+                <div class="command-item"><span class="command-trigger">"New paragraph"</span> - Add paragraph</div>
+                <div class="command-item"><span class="command-trigger">"Delete that"</span> - Undo last action</div>
+                <div class="command-item"><span class="command-trigger">"Select all"</span> - Select all text</div>
+                <div class="command-item"><span class="command-trigger">"Copy that"</span> - Copy text</div>
+                <div class="command-item"><span class="command-trigger">"Paste that"</span> - Paste text</div>
+                <div class="command-item"><span class="command-trigger">"Save file"</span> - Save document</div>
+                <div class="command-item"><span class="command-trigger">"Open [app]"</span> - Open application</div>
+                <div class="command-item"><span class="command-trigger">"Search for [query]"</span> - Web search</div>
+                <div class="command-item"><span class="command-trigger">"What time is it"</span> - Insert time</div>
+                <div class="command-item"><span class="command-trigger">"Stop recording"</span> - Stop STT</div>
+            </div>
+        </div>
+
+        <!-- Transcription Display -->
+        <div class="panel text-display-panel">
+            <h3><i class="fas fa-file-alt"></i> Live Transcription</h3>
+            <div id="text-display-container">
+                <div id="text-display">🎤 Advanced STT Ready - Click Start to begin with AI enhancements! 🎤</div>
+            </div>
+            <div class="text-controls">
+                <button id="clear-text" class="btn-primary"><i class="fas fa-trash"></i> Clear</button>
+                <button id="copy-text" class="btn-primary"><i class="fas fa-copy"></i> Copy</button>
+                <button id="save-text" class="btn-primary"><i class="fas fa-save"></i> Save</button>
+                <button id="export-text" class="btn-primary"><i class="fas fa-download"></i> Export</button>
+                <button id="add-word" class="btn-primary"><i class="fas fa-plus"></i> Add Word</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="enhanced_app.js"></script>
+</body>
+</html>
