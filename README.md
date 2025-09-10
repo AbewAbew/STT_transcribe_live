@@ -1,22 +1,33 @@
 # 🎤 Advanced RealtimeSTT System
 
-A professional-grade Speech-to-Text system with web interface and global integration for Windows. Transform your voice into text anywhere on your system with GPU acceleration and multiple AI models.
+A professional-grade Speech-to-Text system with a modern web interface and a global STT tray app for Windows. Transform your voice into text anywhere on your system with GPU acceleration and multiple AI models.
+
+## 📌 Status
+- Web interface: Stable and feature-rich (enhanced UI)
+- Global STT (Qt tray): Stable for daily use
+- Actively developed: Voice commands, real-time typing, noise calibration, custom vocabulary
 
 ## ✨ Features
 
 ### 🌐 Web Interface
 - **Modern UI** with real-time transcription display
-- **Multiple AI Models** (Tiny to Large-v3) with speed/accuracy trade-offs
-- **Live Statistics** showing word count, sentences, and WPM
+- **Multiple AI Models** (Tiny → Large-v3 / Large-v3-Turbo)
+- **Live Statistics** showing word count and WPM
 - **Text Processing** with auto-punctuation and capitalization
+- **Real-time Typing** (type as you speak; toggle)
+- **Voice Commands** (e.g., new line, copy, paste, undo, insert time)
+- **Noise Calibration** for cleaner input
+- **Custom Vocabulary** (add spoken→written mappings)
 - **Export Options** - Copy, save, or download transcriptions
 - **Keyboard Shortcuts** for quick control
 
 ### 🌍 Global STT Integration
-- **System Tray Application** for system-wide speech-to-text
+- **Qt System Tray Application** (`global_stt_qt.py`) for system-wide STT
 - **Global Hotkeys** - Use STT in any application
+- **Wake Words (optional)** with sensitivity and custom model path
 - **Configurable Settings** with persistent preferences
 - **Multiple Insert Modes** - Type directly, clipboard, or replace text
+- **Advanced VAD & Model Tuning** controls
 
 ### 🚀 Performance & Quality
 - **NVIDIA GPU Acceleration** with CUDA support
@@ -44,32 +55,33 @@ A professional-grade Speech-to-Text system with web interface and global integra
    ```bash
    python download_models.py
    ```
-4. **Start the system**:
+4. **Start via launcher (recommended)**:
    ```bash
-   python start_stt.py
+   python start_stt.py --quick
    ```
+   - This starts the server and opens the enhanced web interface automatically.
 
-### Alternative: Use Batch File
-Double-click `start_stt.bat` for automatic setup and launch.
+### Alternative: Batch File
+Double-click `start_stt.bat` for automatic setup and launch on Windows.
 
 ## 🎯 Usage
 
 ### Web Interface Mode
-1. Run `python start_stt.py` or `start_stt.bat`
-2. Open `interface.html` in your browser (auto-opens)
+1. Run `python start_stt.py --quick` or `start_stt.bat`
+2. The browser opens `enhanced_interface.html`
 3. Select your preferred AI model
-4. Click "Start Recording" and speak
-5. Watch real-time transcription appear
-6. Use text controls to copy, save, or export
+4. Click "Start" and speak
+5. Watch live transcription and optionally enable real-time typing
+6. Use controls to clear, copy, save, export, add custom words, or close the web interface
 
-### Global STT Mode
-1. Run `python global_stt.py` or select from launcher menu
-2. Check system tray for the microphone icon
+### Global STT Mode (Qt Tray)
+1. Run `python start_stt.py --global` (or `python global_stt_qt.py`)
+2. Check the Windows system tray for the microphone icon
 3. Use hotkeys anywhere in Windows:
    - **Ctrl+Shift+S** - Start recording
    - **Ctrl+Shift+X** - Stop recording
    - **Ctrl+Shift+T** - Toggle recording
-4. Right-click tray icon for settings
+4. Right-click the tray icon for settings (model, insert mode, wake words, VAD, real-time typing)
 
 ### Keyboard Shortcuts (Web Interface)
 - **Ctrl+Shift+S** - Start recording
@@ -93,11 +105,16 @@ Double-click `start_stt.bat` for automatic setup and launch.
 - **Language** - Select input language
 - **Auto-Punctuation** - Automatically add periods
 - **Auto-Capitalize** - Capitalize first letter of sentences
-- **Global Typing** - Type transcription into active window
+- **Voice Commands** - Enable/disable voice command processing
+- **Real-time Typing** - Type as you speak (toggle)
+- **Audio Enhancement** - Basic filtering for clearer input
 
-### Global STT Settings
+### Global STT Settings (Qt)
 - **Insert Mode** - How text is inserted (type/clipboard/replace)
 - **Text Processing** - Punctuation and capitalization options
+- **Real-time Typing** - Type while speaking
+- **Wake Words** - Enable, set sensitivity, or use a custom model
+- **Advanced VAD & Model Tuning** - Sensitivity, pauses, beam size, batch size
 - **Hotkey Customization** - Change global keyboard shortcuts
 
 ## 📊 Statistics & Analytics
@@ -110,8 +127,7 @@ The system tracks:
 - **Model Usage** - Which models you use most
 
 Access statistics via:
-- Web interface statistics panel
-- Launcher menu → View Statistics
+- Web interface statistics panel (WPM/word count)
 - `session_stats.json` file
 
 ## 🔧 Troubleshooting
@@ -149,17 +165,21 @@ Access statistics via:
 
 ```
 RealtimeSTT_Project/
-├── 🌐 interface.html          # Modern web interface
-├── 📱 app.js                  # Enhanced frontend logic
-├── 🖥️ app.py                  # Flask server with API
-├── 🌍 global_stt.py           # System tray application
-├── 🚀 start_stt.py            # Enhanced launcher
-├── 📦 requirements.txt        # Python dependencies
+├── 🖥️ app.py                  # Flask+Socket.IO server
+├── 🌐 enhanced_interface.html # Enhanced web interface
+├── 📱 enhanced_app.js         # Frontend logic (features, toggles, UI)
+├── 🌍 global_stt.py           # Global STT core (tray/hotkeys backend)
+├── 🌟 global_stt_qt.py        # Qt system tray app (recommended)
+├── 🚀 start_stt.py            # Launcher (quick start, global mode)
+├── 🪟 start_stt.bat           # Windows batch launcher
+├── ⚙️ launcher_config.json    # Launcher preferences
+├── ⚙️ stt_settings.json       # Global STT saved settings
+├── 🧠 voice_commands.py       # Voice command processing
+├── ✍️ text_processor.py       # Text formatting utilities
+├── 🔊 audio_enhancements.py   # Audio filtering helpers
 ├── 📥 download_models.py      # Model downloader
-├── 🧪 test_stt.py            # System tester
-├── 📝 dictate.py             # Simple dictation script
-├── 🪟 start_stt.bat          # Windows batch launcher
-└── 📊 session_stats.json     # Usage statistics
+├── 📦 requirements.txt        # Python dependencies
+└── 📊 session_stats.json      # Usage statistics
 ```
 
 ## 🎨 Customization
@@ -173,8 +193,8 @@ The web interface uses a Matrix-inspired theme with:
 
 ### Adding Custom Models
 1. Add model name to `CONFIG['models']` in `app.py`
-2. Update model selection in `interface.html`
-3. Download model using `download_models.py`
+2. Update model selection in `enhanced_interface.html`
+3. Download the model using `download_models.py`
 
 ### Custom Hotkeys
 Modify hotkey combinations in `global_stt.py`:
@@ -207,11 +227,14 @@ self.stop_hotkey = "ctrl+shift+x"   # Change as needed
 ## 📈 Future Enhancements
 
 Planned features:
-- **Voice Commands** - Control system with voice
-- **Custom Vocabularies** - Add specialized terms
-- **Multiple Languages** - Simultaneous multi-language support
-- **Cloud Sync** - Optional cloud backup of transcriptions
-- **Plugin System** - Extend functionality with plugins
+- **Multi-language improvements** and profiles
+- **Cloud Sync** (optional) for backups
+- **Plugin System** for extensibility
+- **Advanced analytics** and dashboards
+
+## ⚠️ Known Limitations
+- Windows-focused; other OSes not actively supported.
+- GPU acceleration recommended; CPU may be slower. If CUDA is unavailable, use smaller models for best experience.
 
 ## 🤝 Contributing
 
