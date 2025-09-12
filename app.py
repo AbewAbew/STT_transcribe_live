@@ -5,6 +5,8 @@ from RealtimeSTT import AudioToTextRecorder
 import pyautogui
 import threading
 import logging
+from logging.handlers import RotatingFileHandler
+import gzip
 import numpy as np
 from scipy.signal import resample
 import time
@@ -26,13 +28,72 @@ current_session = {
 session_stats = []
 
 # --- Enhanced App Setup ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-log = logging.getLogger('werkzeug')
-log.setLevel(logging.ERROR)
+# Centralized logging with size-based rotation and optional gzip compression
+def _setup_logging():
+    try:
+        log_level_name = os.getenv('STT_LOG_LEVEL', 'WARNING').upper()
+        log_level = getattr(logging, log_level_name, logging.WARNING)
+        root_logger = logging.getLogger()
+        root_logger.setLevel(log_level)
+
+        # Avoid adding duplicate handlers if already configured
+        log_path = 'realtimesst.log'
+        for h in root_logger.handlers:
+            if isinstance(h, RotatingFileHandler):
+                try:
+                    if getattr(h, 'baseFilename', '').endswith(log_path):
+                        return
+                except Exception:
+                    pass
+
+        max_bytes = int(os.getenv('STT_LOG_MAX_BYTES', '5000000'))  # ~5MB
+        backups = int(os.getenv('STT_LOG_BACKUPS', '3'))
+
+        handler = RotatingFileHandler(
+            log_path,
+            maxBytes=max_bytes,
+            backupCount=backups,
+            encoding='utf-8'
+        )
+
+        def _namer(default_name):
+            return default_name + '.gz'
+
+        def _rotator(source, dest):
+            try:
+                with open(source, 'rb') as src, gzip.open(dest + '.gz', 'wb') as dst:
+                    dst.writelines(src)
+            finally:
+                try:
+                    os.remove(source)
+                except Exception:
+                    pass
+
+        handler.namer = _namer
+        handler.rotator = _rotator
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(message)s'))
+        root_logger.addHandler(handler)
+
+        # Mute framework noise
+        logging.getLogger('werkzeug').setLevel(logging.ERROR)
+        logging.getLogger('engineio').setLevel(logging.ERROR)
+        logging.getLogger('socketio').setLevel(logging.ERROR)
+    except Exception:
+        # As a fallback, don't crash on logging setup issues
+        pass
+
+_setup_logging()
 
 app = Flask(__name__)
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interval=25)
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    ping_timeout=60,
+    ping_interval=25,
+    logger=False,
+    engineio_logger=False
+)
 
 # --- Enhanced Configuration ---
 CONFIG = {
@@ -86,7 +147,7 @@ def on_full_sentence(text):
     if processed_text is None:
         return
     
-    print(f"Final sentence: {processed_text}")
+    logging.debug(f"Final sentence: {processed_text}")
     
     # Update session statistics
     current_session['sentence_count'] += 1

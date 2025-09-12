@@ -1,11 +1,11 @@
 @echo off
-title Advanced RealtimeSTT System
+title Modern Global STT System v2.0
 color 0A
 
 echo.
-echo ========================================
-echo    Advanced RealtimeSTT System
-echo ========================================
+echo ==========================================
+echo    Modern Global STT System v2.0
+echo ==========================================
 echo.
 
 cd /d "%~dp0"
@@ -25,8 +25,23 @@ if exist "venv\Scripts\activate.bat" (
     call venv\Scripts\activate.bat
 )
 
-REM Start the Global STT (Qt tray)
-echo Starting Global STT (Qt tray)...
-python start_stt.py
+REM Start the Modern Global STT system
+echo Starting Modern Global STT (Qt tray)...
+echo Models will load from cache (faster after first run)
+echo.
+python modern_global_stt.py
+
+if errorlevel 1 (
+    echo.
+    echo ==========================================
+    echo ERROR: Failed to start Modern Global STT
+    echo ==========================================
+    echo.
+    echo Possible solutions:
+    echo 1. Install Qt dependencies: pip install PySide6
+    echo 2. Check dependencies: python modern_global_stt.py --info
+    echo 3. Try headless mode: python modern_global_stt.py --headless
+    echo.
+)
 
 pause
