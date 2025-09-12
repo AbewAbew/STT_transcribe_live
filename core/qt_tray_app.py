@@ -18,6 +18,7 @@ from .qt_settings_dialog import QtSettingsDialog
 from .config import get_config, AVAILABLE_MODELS
 from .visual_indicators import get_visual_indicator_manager
 from .model_ready_events import ModelState
+from .overlay_window import STTOverlayWindow
 
 
 def create_default_icon() -> QIcon:
@@ -61,6 +62,9 @@ class ModernQtTrayApp:
         self.config = get_config()
         self.manager = RefactoredGlobalSTTManager(enable_hotkeys=True)
         
+        # Setup overlay window first
+        self.overlay_window = STTOverlayWindow()
+        
         # Setup system tray
         self._setup_tray()
         
@@ -68,8 +72,8 @@ class ModernQtTrayApp:
         self.visual_indicators = get_visual_indicator_manager(self.tray_icon)
         self._setup_visual_callbacks()
         
-        # Connect manager notifications to tray
-        self.manager.notification_callback = self._show_tray_notification
+        # Setup overlay after everything else is ready
+        self._setup_overlay()
     
     def _setup_tray(self):
         """Setup system tray icon and menu"""
@@ -113,25 +117,42 @@ class ModernQtTrayApp:
             lambda: self.visual_indicators.set_error("Model failed to load")
         )
         
-        # Override manager notifications to sync with visual indicators
-        original_notification = self.manager.notification_callback
+        # Set initial notification callback to show tray notifications
+        self.manager.notification_callback = self._show_tray_notification
+    
+    def _setup_overlay(self):
+        """Setup the overlay window"""
+        # Connect overlay buttons to manager functions
+        self.overlay_window.set_callbacks(
+            start_callback=self.manager.start_recording,
+            stop_callback=self.manager.stop_recording
+        )
         
-        def enhanced_notification(title: str, message: str):
-            # Call original notification
-            if original_notification:
-                original_notification(title, message)
+        # Connect overlay signals to manager
+        self.overlay_window.start_requested.connect(self.manager.start_recording)
+        self.overlay_window.stop_requested.connect(self.manager.stop_recording)
+        
+        # Show overlay window on startup
+        self.overlay_window.show()
+        
+        # Create comprehensive notification handler
+        def comprehensive_notification(title: str, message: str):
+            # Show tray notification
+            self._show_tray_notification(title, message)
             
-            # Update visual indicators based on notification
-            if "Started" in title or "Recording" in title:
+            # Update visual indicators
+            if "STT Started" in title:
                 self.visual_indicators.set_recording()
-            elif "Stopped" in title:
+                self.overlay_window.set_recording_state(True)
+            elif "STT Stopped" in title:
                 self.visual_indicators.set_ready()
+                self.overlay_window.set_recording_state(False)
             elif "Command" in title:
                 self.visual_indicators.show_command_executed()
             elif "Error" in title:
                 self.visual_indicators.set_error()
         
-        self.manager.notification_callback = enhanced_notification
+        self.manager.notification_callback = comprehensive_notification
     
     def _build_menu(self):
         """Build the context menu"""
@@ -185,6 +206,12 @@ class ModernQtTrayApp:
         settings_action = QAction("Settings", self.menu)
         settings_action.triggered.connect(self._open_settings)
         self.menu.addAction(settings_action)
+        
+        # Toggle overlay window
+        overlay_text = "Hide Overlay" if self.overlay_window.isVisible() else "Show Overlay"
+        overlay_action = QAction(overlay_text, self.menu)
+        overlay_action.triggered.connect(self.overlay_window.toggle_visibility)
+        self.menu.addAction(overlay_action)
         
         calibrate_action = QAction("Calibrate Noise", self.menu)
         calibrate_action.triggered.connect(self.manager.calibrate_noise)
@@ -310,6 +337,10 @@ class ModernQtTrayApp:
             # Stop recording
             if self.manager.is_recording:
                 self.manager.stop_recording()
+            
+            # Hide and close overlay window
+            if hasattr(self, 'overlay_window'):
+                self.overlay_window.force_close()
             
             # Hide tray icon
             self.tray_icon.hide()
